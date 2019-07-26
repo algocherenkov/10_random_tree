@@ -1,7 +1,9 @@
 #include <fstream>
 #include <math.h>
+#include <cstdlib>
 #include <algorithm>
 #include <random>
+#include <ctime>
 
 #define BOOST_TEST_MODULE test_main
 
@@ -26,46 +28,34 @@ public:
 
     const Node& operator=(const Node& node)
     {
-        leftSubTree = node.leftSubTree;
-        rightSubTree = node.rightSubTree;
-        value_ = node.value_;
-        key_ = node.key_;
-        height = node.height;
+        leftSubTree_     = node.leftSubTree_;
+        rightSubTree_    = node.rightSubTree_;
+        value_          = node.value_;
+        key_            = node.key_;
+        height_          = node.height_;
         return *this;
     }
 
-    Node* getLeftSubTree() const {return leftSubTree; }
-    Node* getRightSubTree() const {return rightSubTree; }
-    KeyType getKey() const { return key_; }
-
 private:
-    Node*       leftSubTree {nullptr};
-    Node*       rightSubTree {nullptr};
-    ValueType   value_;
-    KeyType     key_;
-    int         height{1};
+    int getHeight() const { return height_; }
 
-private:
-
-    int getHeight() const { return height; }
-
-    int getHeightLeft(Node* node) const { return node->leftSubTree? node->leftSubTree->getHeight():0;}
-    int getHeightRight(Node* node) const { return node->rightSubTree? node->rightSubTree->getHeight():0;}
+    int getHeightLeft(Node* node) const { return node->leftSubTree_? node->leftSubTree_->getHeight():0;}
+    int getHeightRight(Node* node) const { return node->rightSubTree_? node->rightSubTree_->getHeight():0;}
 
     int getBalance(Node* node) const { return node? getHeightLeft(node) - getHeightRight(node): 0; }
-    void recalculateHeight(Node* node) { node->height = std::max(getHeightLeft(node), getHeightRight(node)) + 1; }
+    void recalculateHeight(Node* node) { node->height_ = std::max(getHeightLeft(node), getHeightRight(node)) + 1; }
 
     Node* rotateLeft(Node* pivotNode)
     {
         if(!pivotNode)
             return nullptr;
 
-        auto rightSubtree = pivotNode->rightSubTree;
+        auto rightSubtree = pivotNode->rightSubTree_;
         if(!rightSubtree)
             return nullptr;
 
-        pivotNode->rightSubTree = rightSubtree->leftSubTree;
-        rightSubtree->leftSubTree = pivotNode;
+        pivotNode->rightSubTree_ = rightSubtree->leftSubTree_;
+        rightSubtree->leftSubTree_ = pivotNode;
 
         recalculateHeight(pivotNode);
         recalculateHeight(rightSubtree);
@@ -78,12 +68,12 @@ private:
         if(!pivotNode)
             return nullptr;
 
-        auto leftSubtree = pivotNode->leftSubTree;
+        auto leftSubtree = pivotNode->leftSubTree_;
         if(!leftSubtree)
             return nullptr;
 
-        pivotNode->leftSubTree= leftSubtree->rightSubTree;
-        leftSubtree->rightSubTree = pivotNode;
+        pivotNode->leftSubTree_= leftSubtree->rightSubTree_;
+        leftSubtree->rightSubTree_ = pivotNode;
 
         recalculateHeight(pivotNode);
         recalculateHeight(leftSubtree);
@@ -91,142 +81,106 @@ private:
         return leftSubtree;
     }
 
-    Node* bigRotateLeft(Node* node)
+    Node* join(Node* first, Node* second)
     {
-        node->rightSubTree = rotateRight(node->rightSubTree);
-        return rotateLeft(node);
+        if(!first)
+            return second;
+
+        if(!second)
+            return first;
+
+        std::srand(static_cast<unsigned int>(std::time(0)));
+        if( std::rand() % (first->height_ + second->height_) < first->height_)
+        {
+            first->rightSubTree_= join(first->rightSubTree_, second);
+            recalculateHeight(first);
+            return first;
+        }
+        else
+        {
+            second->leftSubTree_ = join(first, second->leftSubTree_);
+            recalculateHeight(second);
+            return second;
+        }
     }
 
-    Node* bigRotateRight(Node* node)
+    Node* insertToRoot(Node* node, KeyType key, ValueType value)
     {
-        node->leftSubTree = rotateLeft(node->leftSubTree);
-        return rotateRight(node);
-    }
+        if(!node)
+            return new Node(key, value);
 
-    Node* rebalance(Node* node, KeyType key)
-    {
-        recalculateHeight(node);
-        auto balance = getBalance(node);
-
-        if (balance > 1 && node->leftSubTree && key <= node->leftSubTree->key_)
+        if(key <= node->key_)
+        {
+            node->leftSubTree_ = insertToRoot(node->leftSubTree_, key, value);
             return rotateRight(node);
-
-        if (balance < -1 && node->rightSubTree && key > node->rightSubTree->key_)
+        }
+        else
+        {
+            node->rightSubTree_ = insertToRoot(node->rightSubTree_, key, value);
             return rotateLeft(node);
-
-        if (balance > 1 && node->leftSubTree && key > node->leftSubTree->key_)
-            return bigRotateRight(node);
-
-        if (balance < -1 && node->rightSubTree && key < node->rightSubTree->key_)
-            return bigRotateLeft(node);
-
-        return node;
-    }
-
-    Node* removeNode(KeyType key, Node* node)
-    {
-        if(node == nullptr)
-            return node;
-
-        if(key < node->key_)
-            node->leftSubTree = removeNode(key, node->leftSubTree);
-        else if(key > node->key_)
-            node->rightSubTree = removeNode(key, node->rightSubTree);
-        else
-        {
-            if(node->leftSubTree == nullptr || node->rightSubTree == nullptr)
-            {
-                Node* temp = node->leftSubTree ? node->leftSubTree: node->rightSubTree;
-
-                if (temp == nullptr)
-                {
-                    temp = node;
-                    node = nullptr;
-                }
-                else
-                {
-                    *node = *temp;
-                }
-
-                delete temp;
-            }
-            else
-            {
-                Node* temp = getMinFromRightSubTree(node->rightSubTree);
-
-                node->key_ = temp->key_;
-                node->value_ = temp->value_;
-
-                node->rightSubTree = removeNode(temp->key_, node->rightSubTree);
-            }
-        }
-
-        if(node == nullptr)
-            return node;
-
-        return rebalance(node, key);
-    }
-
-    Node* getMinFromRightSubTree(Node* node)
-    {
-        Node* currentNode = node;
-
-        while(currentNode->leftSubTree != nullptr)
-            currentNode = currentNode->leftSubTree;
-
-        return currentNode;
-    }
-
-    Node* insertToRoot(KeyType key, ValueType value)
-    {
-
-    }
-
-    void regularInsert(KeyType key, ValueType value)
-    {
-        if(key <= key_)
-        {
-            if(leftSubTree)
-            {
-               leftSubTree = leftSubTree->insert(key, value);
-            }
-            else
-            {
-                leftSubTree = new Node(key, value);
-            }
-        }
-        else
-        {
-            if(rightSubTree)
-            {
-                rightSubTree = rightSubTree->insert(key, value);
-            }
-            else
-            {
-                rightSubTree = new Node(key, value);
-            }
         }
     }
 
 public:
-    Node* insert(KeyType key, ValueType value)
+    /*basic interface*/
+    Node* insert(Node* node, KeyType key, ValueType value)
     {
-        Node* node;
-        std::srand(time(0));
-        if(std::rand() % (height + 1) == 0)
-            node = insertToRoot(key, value);
+        if(!node)
+            return new Node(key, value);
 
-        regularInsert(key, value);
-        recalculateHeight(this);
-        return node? node: this;
+        std::srand(static_cast<unsigned int>(time(0)));
+        if(std::rand() % (node->height_ + 1) == 0)
+            return insertToRoot(node, key, value);
+
+        if(key <= node->key_)
+            node->leftSubTree_ = insert(node->leftSubTree_, key, value);
+        else
+            node->rightSubTree_ = insert(node->rightSubTree_, key, value);
+
+        recalculateHeight(node);
+        return node;
     }
 
-    void removeNode(KeyType key)
+    Node* remove(Node* node, KeyType key)
     {
-        removeNode(key, this);
+        if(!node)
+            return node;
+        if(node->key_ == key)
+        {
+            Node* result = join(node->leftSubTree_, node->rightSubTree_);
+            delete node;
+            return result;
+        }
+        else if(key < node->key_)
+            node->leftSubTree_ = remove(node->leftSubTree_, key);
+        else
+            node->rightSubTree_ = remove(node->rightSubTree_, key);
+        return node;
     }
 
+    Node* find(Node* node, KeyType key)
+    {
+        if(!node)
+            return nullptr;
+        if(key == node->getKey() )
+            return node;
+        if(key < node->getKey())
+            return find(node->leftSubTree_, key);
+        else
+            return find(node->rightSubTree_, key);
+    }
 
+    /*helpers*/
+    Node* getLeftSubTree() const { return leftSubTree_; }
+    Node* getRightSubTree() const { return rightSubTree_; }
+    KeyType getKey() const { return key_; }
+
+private:
+    Node*       leftSubTree_ {nullptr};
+    Node*       rightSubTree_ {nullptr};
+    ValueType   value_;
+    KeyType     key_;
+    int         height_ {1};
 };
 
 template<typename KeyType, typename ValueType>
@@ -247,22 +201,22 @@ void fillVectorFromTree(std::vector<int>& vector, Node<KeyType, ValueType>* root
 BOOST_AUTO_TEST_CASE(quicksort_test)
 {
 
-    Node<int, std::string> tree(5, "root");
-    tree.insert(7, "alala");
-    tree.insert(3, "ololo");
-    tree.insert(10, "atata");
-    tree.insert(1, "azaza");
-    tree.insert(12, "ululu");
-    tree.insert(15, "ahaha");
-    tree.insert(19, "tilitili");
-    tree.insert(4, "bububu");
-    tree.insert(-1, "gagaga");
-    tree.insert(-3, "fififi");
-    tree.insert(21, "tratata");
-    tree.insert(20, "wiwiwi");
+    Node<int, std::string>* root = new Node<int, std::string>(5, "first");
+    root = root->insert(root, 7, "alala");
+    root = root->insert(root, 3, "ololo");
+    root = root->insert(root, 10, "atata");
+    root = root->insert(root, 1, "azaza");
+    root = root->insert(root, 12, "ululu");
+    root = root->insert(root, 15, "ahaha");
+    root = root->insert(root, 19, "tilitili");
+    root = root->insert(root, 4, "bububu");
+    root = root->insert(root, -1, "gagaga");
+    root = root->insert(root, -3, "fififi");
+    root = root->insert(root, 21, "tratata");
+    root = root->insert(root, 20, "wiwiwi");
 
     std::vector<int> keyOrder;
-    fillVectorFromTree(keyOrder, &tree);
+    fillVectorFromTree(keyOrder, root);
 
     int prev = keyOrder[0];
     for(const auto& key: keyOrder)
@@ -271,14 +225,19 @@ BOOST_AUTO_TEST_CASE(quicksort_test)
         prev = key;
     }
 
-    tree.removeNode(12);
-    tree.removeNode(-1);
-    tree.removeNode(21);
-    tree.removeNode(10);
-    tree.removeNode(5);
+    auto result = root->find(root, 21)->getKey();
+    BOOST_CHECK_MESSAGE(result == 21, "find()-method returned wrong key: " << result);
+    result = root->find(root, -3)->getKey();
+    BOOST_CHECK_MESSAGE(result == -3, "find()-method returned wrong key: " << result);
+
+    root = root->remove(root, 12);
+    root = root->remove(root, -1);
+    root = root->remove(root, 21);
+    root = root->remove(root, 10);
+    root = root->remove(root, 5);
     keyOrder.clear();
 
-    fillVectorFromTree(keyOrder, &tree);
+    fillVectorFromTree(keyOrder, root);
 
     prev = keyOrder[0];
     for(const auto& key: keyOrder)
